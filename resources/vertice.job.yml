@@ -1,0 +1,101 @@
+# Job vertice_farol: a Torre de Controle inteira, toda segunda às 6h (America/Sao_Paulo).
+# No target dev o agendamento fica pausado pelo preset trigger_pause_status (databricks.yml).
+#
+#  ingestao_feriados ──┐
+#                      ├── conferencia_bronze ── medalhao ──┬── testes_de_qualidade
+#  ingestao_data_lake ─┘                                    └── status_com_ia
+#
+#  1. ingestao_feriados    notebook: grava bronze.feriados a partir da BrasilAPI
+#  2. ingestao_data_lake   notebook: baixa os arquivos do Supabase Storage (boto3), pousa no
+#                          volume bronze.raw e recria as 9 tabelas da bronze
+#  3. conferencia_bronze   sql_task: confere as 9 tabelas contra a contagem esperada (seed 42)
+#  4. medalhao             pipeline vertice_medalhao: silver (7 tabelas) e gold (3 tabelas)
+#  5. testes_de_qualidade  sql_task: os 10 testes da silver e da gold (raise_error se falhar)
+#  6. status_com_ia        sql_task: estrutura o texto do status semanal (regra, palavra-chave
+#                          e ai_classify + ai_extract), MERGE incremental em gold.status_estruturado
+#
+# max_concurrent_runs: 1, porque duas execuções ao mesmo tempo apagariam a bronze uma da outra.
+resources:
+  jobs:
+    vertice_farol:
+      name: vertice_farol
+      tasks:
+        - task_key: ingestao_feriados
+          disabled: false
+          email_notifications: {}
+          notebook_task:
+            notebook_path: ../src/ingestao/Ingestão API.ipynb
+            source: WORKSPACE
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: ingestao_data_lake
+          disabled: false
+          email_notifications: {}
+          notebook_task:
+            # as chaves (aws_access_key_id, aws_secret_access_key) o notebook lê do secret scope "supabase"
+            base_parameters:
+              AWS_DEFAULT_REGION: us-east-2
+              S3_ENDPOINT: https://yupqrlvijfcbxnxjzlqn.storage.supabase.co/storage/v1/s3
+            notebook_path: ../src/ingestao/Ingestão AWS.py
+            source: WORKSPACE
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+
+        # confere as 9 tabelas da bronze contra a contagem esperada (seed 42)
+        - task_key: conferencia_bronze
+          depends_on:
+            - task_key: ingestao_feriados
+            - task_key: ingestao_data_lake
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ../src/conferencia/00-conferencia-bronze.sql
+
+        # silver e gold no pipeline declarativo
+        - task_key: medalhao
+          depends_on:
+            - task_key: conferencia_bronze
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.vertice_medalhao.id}
+
+        # os 10 testes de qualidade da silver e da gold (raise_error se algum falhar)
+        - task_key: testes_de_qualidade
+          depends_on:
+            - task_key: medalhao
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ../src/testes/testes.sql
+
+        # o texto livre do status vira coluna (em paralelo com os testes)
+        - task_key: status_com_ia
+          depends_on:
+            - task_key: medalhao
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ../src/ia/status_estruturado.sql
+
+        # a fórmula de cada KPI num lugar só: a metric view gold.mv_projetos
+        # (só depois que a gold passou nos testes e o status foi estruturado)
+        - task_key: metricas_governadas
+          depends_on:
+            - task_key: testes_de_qualidade
+            - task_key: status_com_ia
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ../src/metricas/metricas.sql
+
+      max_concurrent_runs: 1
+      performance_target: PERFORMANCE_OPTIMIZED
+      queue:
+        enabled: true
+      timeout_seconds: 0
+      # toda segunda às 6h (no dev, pausado pelo preset)
+      schedule:
+        quartz_cron_expression: "0 0 6 ? * MON"
+        timezone_id: America/Sao_Paulo
+        pause_status: PAUSED
+      webhook_notifications: {}

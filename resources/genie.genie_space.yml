@@ -1,0 +1,11 @@
+# Genie "Farol · Diretoria": o agente que o dono usa para perguntar em português.
+# O JSON é gerado por scripts/gerar_genie.py: não edite o .geniespace.json à mão
+# nem o Genie no workspace (o próximo deploy acusaria "modified remotely").
+# O Genie precisa das tabelas existindo: do zero, deploy → run → deploy.
+resources:
+  genie_spaces:
+    genie_farol:
+      title: "Farol · Diretoria"
+      description: "Pergunte sobre os projetos da Vértice: quais estão atrasados e de quais clientes, quanto o atraso vai custar, quem está parado enquanto outro projeto pede gente e o que vai dar errado no próximo mês. Dados de 16/10/2026."
+      warehouse_id: ${var.warehouse_id}
+      file_path: ./farol.geniespace.json

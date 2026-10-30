@@ -1,0 +1,48 @@
+bundle:
+  name: minha-torre
+
+variables:
+  sql_warehouse_id:
+    description: SQL Warehouse ID
+  genie_space_id:
+    description: Id do Genie "Farol · Diretoria" (do bundle vertice, pelo databricks bundle summary)
+  genie_space_name:
+    description: Título do Genie, como aparece no workspace
+
+resources:
+  apps:
+    app:
+      name: "minha-torre"
+      description: "Projeto Farol: torre de controle dos projetos da Vértice"
+      source_code_path: ./
+
+      # Start the app automatically on deploy.
+      lifecycle:
+        started: true
+      # O Genie roda em nome de quem está usando o app (on-behalf-of): cada pessoa
+      # só vê o que as próprias permissões deixam. Na 1ª visita o app pede consentimento.
+      user_api_scopes:
+        - genie
+
+      # The resources which this app has access to.
+      resources:
+        - name: sql-warehouse
+          sql_warehouse:
+            id: ${var.sql_warehouse_id}
+            permission: CAN_USE
+        - name: genie-space
+          genie_space:
+            name: ${var.genie_space_name}
+            space_id: ${var.genie_space_id}
+            permission: CAN_RUN
+
+targets:
+  default:
+    default: true
+    workspace:
+      host: https://dbc-3f837712-3a5f.cloud.databricks.com
+
+    variables:
+      sql_warehouse_id: 590c38ed4db4bb3d
+      genie_space_id: 01f1d485134114ddb555bdb027c05436
+      genie_space_name: "Farol · Diretoria"

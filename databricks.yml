@@ -1,0 +1,43 @@
+# This is a Declarative Automation Bundle definition for Verticeaovivo.
+# See https://docs.databricks.com/dev-tools/bundles/index.html for documentation.
+bundle:
+  name: Verticeaovivo
+  uuid: f5ee8d4b-2240-4186-a736-179e0b9a9d6c
+
+include:
+  - resources/*.yml
+
+# O app minha-torre é um bundle próprio dentro desta pasta: sem este exclude,
+# o deploy do vertice subiria o node_modules do app inteiro.
+sync:
+  exclude:
+    - "minha-torre/**"
+
+# Variable declarations. As chaves do data lake não entram aqui: o notebook de
+# ingestão lê do secret scope "supabase" (dbutils.secrets.get).
+variables:
+  catalog:
+    description: Catálogo do projeto Farol
+    default: lakehouse_vertice
+  warehouse_id:
+    description: SQL warehouse das sql_task (Serverless Starter Warehouse)
+    default: 590c38ed4db4bb3d
+
+targets:
+  dev:
+    # Sem 'mode: development': ele prefixaria os nomes com '[dev usuario]'.
+    # O preset mantém agendamentos e gatilhos pausados no dev.
+    default: true
+    presets:
+      trigger_pause_status: PAUSED
+    workspace:
+      host: https://dbc-3f837712-3a5f.cloud.databricks.com
+  prod:
+    mode: production
+    workspace:
+      host: https://dbc-3f837712-3a5f.cloud.databricks.com
+      # We explicitly deploy to /Workspace/Users/jorgevcorreab@gmail.com to make sure we only have a single copy.
+      root_path: /Workspace/Users/jorgevcorreab@gmail.com/.bundle/${bundle.name}/${bundle.target}
+    permissions:
+      - user_name: jorgevcorreab@gmail.com
+        level: CAN_MANAGE
